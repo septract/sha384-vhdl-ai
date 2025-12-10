@@ -5,7 +5,7 @@
 -- Optimizations:
 --   - 4x loop unrolling: 4 rounds per clock cycle (20 cycles for compression)
 --   - Carry-Save Adders: Reduced critical path
---   - 128-bit data input: 8 cycles to load block instead of 16
+--   - 512-bit data input: 2 cycles to load block instead of 16
 --   - Circular W buffer: No array shifting
 --   - K+W pre-computation: Reduces T1 from 5 operands to 4
 --
@@ -13,7 +13,7 @@
 --   clk        : Clock input
 --   reset      : Synchronous reset (active high)
 --   start      : Start hashing a new message
---   data_in    : 128-bit input data (2 words per cycle)
+--   data_in    : 512-bit input data (8 words per cycle)
 --   data_valid : Input data is valid
 --   last_block : This is the last block (message already padded)
 --   ready      : Core is ready to accept data
@@ -32,7 +32,7 @@ entity sha384_fast is
         clk        : in  std_logic;
         reset      : in  std_logic;
         start      : in  std_logic;
-        data_in    : in  std_logic_vector(127 downto 0);  -- 2 words per cycle
+        data_in    : in  std_logic_vector(511 downto 0);  -- 8 words per cycle
         data_valid : in  std_logic;
         last_block : in  std_logic;
         ready      : out std_logic;
@@ -57,7 +57,7 @@ architecture rtl of sha384_fast is
     signal W : word64_array(0 to 15);
 
     -- Counters
-    signal word_count : unsigned(2 downto 0);   -- 0-7 for loading 8 pairs of words
+    signal word_count : unsigned(0 downto 0);   -- 0-1 for loading 2 sets of 8 words
     signal round_base : unsigned(6 downto 0);   -- 0, 4, 8, ... 76 (increments by 4)
 
     -- Flag for last block
@@ -139,13 +139,29 @@ begin
                         ready <= '1';
 
                         if data_valid = '1' then
-                            -- Load 2 words per cycle (128 bits)
-                            -- data_in(127:64) = first word, data_in(63:0) = second word
-                            W(to_integer(word_count & '0'))     <= data_in(127 downto 64);
-                            W(to_integer(word_count & '1'))     <= data_in(63 downto 0);
-                            is_last_block <= last_block;
+                            -- Load 8 words per cycle (512 bits)
+                            -- data_in(511:448) = word 0, data_in(447:384) = word 1, etc.
+                            if word_count = 0 then
+                                W(0) <= data_in(511 downto 448);
+                                W(1) <= data_in(447 downto 384);
+                                W(2) <= data_in(383 downto 320);
+                                W(3) <= data_in(319 downto 256);
+                                W(4) <= data_in(255 downto 192);
+                                W(5) <= data_in(191 downto 128);
+                                W(6) <= data_in(127 downto 64);
+                                W(7) <= data_in(63 downto 0);
+                                word_count <= "1";
+                            else
+                                W(8)  <= data_in(511 downto 448);
+                                W(9)  <= data_in(447 downto 384);
+                                W(10) <= data_in(383 downto 320);
+                                W(11) <= data_in(319 downto 256);
+                                W(12) <= data_in(255 downto 192);
+                                W(13) <= data_in(191 downto 128);
+                                W(14) <= data_in(127 downto 64);
+                                W(15) <= data_in(63 downto 0);
+                                is_last_block <= last_block;
 
-                            if word_count = 7 then
                                 word_count <= (others => '0');
                                 round_base <= (others => '0');
                                 ready      <= '0';
@@ -161,15 +177,13 @@ begin
                                 vh <= hv(7);
 
                                 -- Pre-compute K[0..3] + W[0..3] for first compress cycle
-                                -- Note: data_in contains W[14..15], W[0..13] already loaded
+                                -- Note: W[0..7] loaded in previous cycle, W[8..15] in this cycle
                                 kw_pre(0) <= add2(K(0), W(0));
                                 kw_pre(1) <= add2(K(1), W(1));
                                 kw_pre(2) <= add2(K(2), W(2));
                                 kw_pre(3) <= add2(K(3), W(3));
 
                                 state <= COMPRESS;
-                            else
-                                word_count <= word_count + 1;
                             end if;
                         end if;
 

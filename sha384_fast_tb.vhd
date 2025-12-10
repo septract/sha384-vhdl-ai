@@ -22,7 +22,7 @@ architecture sim of sha384_fast_tb is
     signal clk        : std_logic := '0';
     signal reset      : std_logic := '1';
     signal start      : std_logic := '0';
-    signal data_in    : std_logic_vector(127 downto 0) := (others => '0');
+    signal data_in    : std_logic_vector(511 downto 0) := (others => '0');
     signal data_valid : std_logic := '0';
     signal last_block : std_logic := '0';
     signal ready      : std_logic;
@@ -73,10 +73,10 @@ architecture sim of sha384_fast_tb is
         return result;
     end function;
 
-    -- Procedure to send a 1024-bit block (8 x 128-bit words for fast interface)
+    -- Procedure to send a 1024-bit block (2 x 512-bit words for fast interface)
     procedure send_block_fast(
         signal clk_sig    : in  std_logic;
-        signal data_sig   : out std_logic_vector(127 downto 0);
+        signal data_sig   : out std_logic_vector(511 downto 0);
         signal valid_sig  : out std_logic;
         signal last_sig   : out std_logic;
         signal ready_sig  : in  std_logic;
@@ -84,14 +84,15 @@ architecture sim of sha384_fast_tb is
         constant is_last  : in  boolean
     ) is
     begin
-        -- Send 8 pairs of 64-bit words (128 bits each)
-        for i in 0 to 7 loop
+        -- Send 2 sets of 8 words (512 bits each)
+        for i in 0 to 1 loop
             wait until rising_edge(clk_sig) and ready_sig = '1';
-            -- Pack two 64-bit words into 128-bit data
-            -- data_in(127:64) = first word, data_in(63:0) = second word
-            data_sig <= words(i*2) & words(i*2 + 1);
+            -- Pack eight 64-bit words into 512-bit data
+            -- data_in(511:448) = word 0, data_in(447:384) = word 1, etc.
+            data_sig <= words(i*8) & words(i*8+1) & words(i*8+2) & words(i*8+3) &
+                        words(i*8+4) & words(i*8+5) & words(i*8+6) & words(i*8+7);
             valid_sig <= '1';
-            if i = 7 and is_last then
+            if i = 1 and is_last then
                 last_sig <= '1';
             else
                 last_sig <= '0';
@@ -401,7 +402,7 @@ begin
         report "  Passed: " & integer'image(pass_count);
         report "  Failed: " & integer'image(fail_count);
         report "========================================";
-        report "Performance: ~30 cycles per block (vs ~97 for original)";
+        report "Performance: ~28 cycles per block (vs ~97 for original)";
         report "========================================";
 
         if fail_count = 0 then
