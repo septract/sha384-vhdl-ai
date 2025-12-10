@@ -33,7 +33,7 @@ package sha384_pkg is
         x"d807aa98a3030242", x"12835b0145706fbe", x"243185be4ee4b28c", x"550c7dc3d5ffb4e2",
         x"72be5d74f27b896f", x"80deb1fe3b1696b1", x"9bdc06a725c71235", x"c19bf174cf692694",
         x"e49b69c19ef14ad2", x"efbe4786384f25e3", x"0fc19dc68b8cd5b5", x"240ca1cc77ac9c65",
-        x"2de92c6f592b0275", x"4a7484aa6a481ed8", x"5cb0a9dcbd41fbd4", x"76f988da831153b5",
+        x"2de92c6f592b0275", x"4a7484aa6ea6e483", x"5cb0a9dcbd41fbd4", x"76f988da831153b5",
         x"983e5152ee66dfab", x"a831c66d2db43210", x"b00327c898fb213f", x"bf597fc7beef0ee4",
         x"c6e00bf33da88fc2", x"d5a79147930aa725", x"06ca6351e003826f", x"142929670a0e6e70",
         x"27b70a8546d22ffc", x"2e1b21385c26c926", x"4d2c6dfc5ac42aed", x"53380d139d95b3df",

@@ -202,7 +202,50 @@ begin
             x"00000000000001c0"   -- Length = 448 bits
         );
         constant tv3_expected : std_logic_vector(383 downto 0) :=
-            hex_to_hash384("3391fdddfc8dc7397707a65b1b4709397cf8b1d162af05abfe8f450de5f36bc6b0455a8520bc4e6f5fe95b1fe3c8452b");
+            hex_to_hash384("3391fdddfc8dc7393707a65b1b4709397cf8b1d162af05abfe8f450de5f36bc6b0455a8520bc4e6f5fe95b1fe3c8452b");
+
+        -- Test vector 4: 112 bytes = 896 bits (requires TWO 1024-bit blocks)
+        -- "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu"
+        -- Block 1: message (14 words) + padding start + zero
+        constant tv4_block1 : word64_array(0 to 15) := (
+            x"6162636465666768",  -- "abcdefgh"
+            x"6263646566676869",  -- "bcdefghi"
+            x"636465666768696a",  -- "cdefghij"
+            x"6465666768696a6b",  -- "defghijk"
+            x"65666768696a6b6c",  -- "efghijkl"
+            x"666768696a6b6c6d",  -- "fghijklm"
+            x"6768696a6b6c6d6e",  -- "ghijklmn"
+            x"68696a6b6c6d6e6f",  -- "hijklmno"
+            x"696a6b6c6d6e6f70",  -- "ijklmnop"
+            x"6a6b6c6d6e6f7071",  -- "jklmnopq"
+            x"6b6c6d6e6f707172",  -- "klmnopqr"
+            x"6c6d6e6f70717273",  -- "lmnopqrs"
+            x"6d6e6f7071727374",  -- "mnopqrst"
+            x"6e6f707172737475",  -- "nopqrstu"
+            x"8000000000000000",  -- padding start
+            x"0000000000000000"   -- zeros
+        );
+        -- Block 2: zeros + 128-bit length (896 = 0x380)
+        constant tv4_block2 : word64_array(0 to 15) := (
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",
+            x"0000000000000000",  -- High 64 bits of length
+            x"0000000000000380"   -- Low 64 bits of length (896 bits)
+        );
+        constant tv4_expected : std_logic_vector(383 downto 0) :=
+            hex_to_hash384("09330c33f71147e83d192fc782cd1b4753111b173b3b05d22fa08086e3b0f712fcc7c71a557e2db966c3e9fa91746039");
 
         variable hash_match : boolean;
 
@@ -240,6 +283,7 @@ begin
         else
             report "  FAILED" severity error;
             report "  Expected: cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7";
+            report "  Got:      " & to_hstring(hash_out);
             fail_count <= fail_count + 1;
         end if;
 
@@ -268,6 +312,7 @@ begin
         else
             report "  FAILED" severity error;
             report "  Expected: 38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b";
+            report "  Got:      " & to_hstring(hash_out);
             fail_count <= fail_count + 1;
         end if;
 
@@ -295,7 +340,41 @@ begin
             pass_count <= pass_count + 1;
         else
             report "  FAILED" severity error;
-            report "  Expected: 3391fdddfc8dc7397707a65b1b4709397cf8b1d162af05abfe8f450de5f36bc6b0455a8520bc4e6f5fe95b1fe3c8452b";
+            report "  Expected: 3391fdddfc8dc7393707a65b1b4709397cf8b1d162af05abfe8f450de5f36bc6b0455a8520bc4e6f5fe95b1fe3c8452b";
+            report "  Got:      " & to_hstring(hash_out);
+            fail_count <= fail_count + 1;
+        end if;
+
+        wait for CLK_PERIOD * 5;
+
+        ------------------------------------------------------------------------
+        -- Test 4: Two-block message (112 bytes = 896 bits)
+        ------------------------------------------------------------------------
+        test_count <= test_count + 1;
+        report "Test 4: SHA-384(112-byte message) - TWO BLOCKS";
+
+        wait until rising_edge(clk) and ready = '1';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        -- Send first block (not last)
+        send_block(clk, data_in, data_valid, last_block, ready, tv4_block1, false);
+
+        -- Send second block (last)
+        send_block(clk, data_in, data_valid, last_block, ready, tv4_block2, true);
+
+        wait until rising_edge(clk) and hash_valid = '1';
+        wait for 1 ns;
+
+        hash_match := (hash_out = tv4_expected);
+        if hash_match then
+            report "  PASSED";
+            pass_count <= pass_count + 1;
+        else
+            report "  FAILED" severity error;
+            report "  Expected: 09330c33f71147e83d192fc782cd1b4753111b173b3b05d22fa08086e3b0f712fcc7c71a557e2db966c3e9fa91746039";
+            report "  Got:      " & to_hstring(hash_out);
             fail_count <= fail_count + 1;
         end if;
 
