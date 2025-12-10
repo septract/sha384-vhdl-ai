@@ -1,0 +1,7 @@
+# NVC compiled output
+work/
+
+# Editor files
+*.swp
+*~
+.DS_Store

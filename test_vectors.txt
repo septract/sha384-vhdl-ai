@@ -1,0 +1,66 @@
+# SHA-384 Test Vectors
+# Source: NIST CAVP / https://www.di-mgt.com.au/sha_testvectors.html
+#
+# Format: MESSAGE (hex or ASCII) | EXPECTED_HASH (hex)
+#
+# These are the official NIST test vectors for validating SHA-384 implementations.
+
+================================================================================
+Test Vector 1: "abc"
+================================================================================
+Message (ASCII): abc
+Message (hex):   616263
+Message length:  24 bits (3 bytes)
+
+Expected SHA-384:
+cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7
+
+================================================================================
+Test Vector 2: "" (empty string)
+================================================================================
+Message (ASCII): (empty)
+Message (hex):   (empty)
+Message length:  0 bits
+
+Expected SHA-384:
+38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b
+
+================================================================================
+Test Vector 3: "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
+================================================================================
+Message (ASCII): abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq
+Message (hex):   6162636462636465636465666465666765666768666768696768696a68696a6b696a6b6c6a6b6c6d6b6c6d6e6c6d6e6f6d6e6f706e6f7071
+Message length:  448 bits (56 bytes)
+
+Expected SHA-384:
+3391fdddfc8dc7397707a65b1b4709397cf8b1d162af05abfe8f450de5f36bc6b0455a8520bc4e6f5fe95b1fe3c8452b
+
+================================================================================
+Test Vector 4: "abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu"
+================================================================================
+Message (ASCII): abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu
+Message length:  896 bits (112 bytes)
+
+Expected SHA-384:
+09330c33f71147e83d192fc782cd1b4753111b173b3b05d22fa08086e3b0f712fcc7c71a557e2db966c3e9fa91746039
+
+================================================================================
+Test Vector 5: One million 'a' characters
+================================================================================
+Message (ASCII): "a" repeated 1,000,000 times
+Message length:  8,000,000 bits (1,000,000 bytes)
+
+Expected SHA-384:
+9d0e1809716474cb086e834e310a4a1ced149e9c00f248527972cec5704c2a5b07b8b3dc38ecc4ebae97ddd87f3d8985
+
+================================================================================
+Notes on SHA-384 Padding
+================================================================================
+SHA-384 uses the same padding as SHA-512:
+1. Append a single '1' bit to the message
+2. Append '0' bits until message length ≡ 896 (mod 1024)
+3. Append the 128-bit message length in big-endian format
+
+Block size: 1024 bits (128 bytes)
+Word size:  64 bits
+Output:     384 bits (first 6 of 8 hash words)

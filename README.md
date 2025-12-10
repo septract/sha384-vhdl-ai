@@ -1,0 +1,1 @@
+A test of Claude's ability to generate VHDL code. 
