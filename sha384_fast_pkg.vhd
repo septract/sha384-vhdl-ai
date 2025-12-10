@@ -72,7 +72,9 @@ package sha384_fast_pkg is
 
     -- Multi-operand addition using CSA
     function add5_csa(a, b, c, d, e : word64) return word64;
+    function add4_csa(a, b, c, d : word64) return word64;
     function add3_csa(a, b, c : word64) return word64;
+    function add2(a, b : word64) return word64;
 
 end package sha384_fast_pkg;
 
@@ -184,14 +186,34 @@ package body sha384_fast_pkg is
     end function;
 
     ---------------------------------------------------------------------------
+    -- Add 4 operands using CSA tree
+    -- Used for T1 when K+W is pre-computed: h + Sigma1(e) + Ch(e,f,g) + (K+W)
+    ---------------------------------------------------------------------------
+    function add4_csa(a, b, c, d : word64) return word64 is
+        variable r1, r2 : csa_pair;
+    begin
+        r1 := csa_3_2(a, b, c);
+        r2 := csa_3_2(r1.s, r1.c, d);
+        return csa_reduce(r2);
+    end function;
+
+    ---------------------------------------------------------------------------
     -- Add 3 operands using CSA
-    -- T2 = Sigma0(a) + Maj(a,b,c)
     ---------------------------------------------------------------------------
     function add3_csa(a, b, c : word64) return word64 is
         variable r : csa_pair;
     begin
         r := csa_3_2(a, b, c);
         return csa_reduce(r);
+    end function;
+
+    ---------------------------------------------------------------------------
+    -- Simple 2-operand addition
+    -- T2 = Sigma0(a) + Maj(a,b,c)
+    ---------------------------------------------------------------------------
+    function add2(a, b : word64) return word64 is
+    begin
+        return std_logic_vector(unsigned(a) + unsigned(b));
     end function;
 
 end package body sha384_fast_pkg;

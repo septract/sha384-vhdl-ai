@@ -7,6 +7,7 @@
 --   - Carry-Save Adders: Reduced critical path
 --   - 128-bit data input: 8 cycles to load block instead of 16
 --   - Circular W buffer: No array shifting
+--   - K+W pre-computation: Reduces T1 from 5 operands to 4
 --
 -- Interface:
 --   clk        : Clock input
@@ -62,6 +63,9 @@ architecture rtl of sha384_fast is
     -- Flag for last block
     signal is_last_block : std_logic;
 
+    -- Pre-computed K+W values (computed one cycle ahead)
+    signal kw_pre : word64_array(0 to 3);
+
     -- Function to compute W index with circular addressing
     -- For round t, we need W[t mod 16]
     function w_idx(t : unsigned) return integer is
@@ -75,8 +79,8 @@ begin
     process(clk)
         -- W values for current 4 rounds
         variable w0, w1, w2, w3 : word64;
-        -- K values for current 4 rounds
-        variable k0, k1, k2, k3 : word64;
+        -- Pre-computed K+W values (from registered kw_pre)
+        variable kw0, kw1, kw2, kw3 : word64;
         -- Working variables (local copies for combinational logic)
         variable a, b, c, d, e, f, g, h : word64;
         -- Intermediate values for round 0
@@ -156,6 +160,13 @@ begin
                                 vg <= hv(6);
                                 vh <= hv(7);
 
+                                -- Pre-compute K[0..3] + W[0..3] for first compress cycle
+                                -- Note: data_in contains W[14..15], W[0..13] already loaded
+                                kw_pre(0) <= add2(K(0), W(0));
+                                kw_pre(1) <= add2(K(1), W(1));
+                                kw_pre(2) <= add2(K(2), W(2));
+                                kw_pre(3) <= add2(K(3), W(3));
+
                                 state <= COMPRESS;
                             else
                                 word_count <= word_count + 1;
@@ -166,11 +177,11 @@ begin
                         -- Current round base
                         t := round_base;
 
-                        -- Get K values for rounds t, t+1, t+2, t+3
-                        k0 := K(to_integer(t));
-                        k1 := K(to_integer(t + 1));
-                        k2 := K(to_integer(t + 2));
-                        k3 := K(to_integer(t + 3));
+                        -- Use pre-computed K+W values from previous cycle
+                        kw0 := kw_pre(0);
+                        kw1 := kw_pre(1);
+                        kw2 := kw_pre(2);
+                        kw3 := kw_pre(3);
 
                         -- Get/compute W values for rounds t, t+1, t+2, t+3
                         if t < 16 then
@@ -236,41 +247,42 @@ begin
 
                         -------------------------------------------------------
                         -- Round t (first of 4)
+                        -- T1 = h + Sigma1(e) + Ch(e,f,g) + (K[t] + W[t])
+                        -- Using pre-computed K+W reduces from 5 operands to 4
                         -------------------------------------------------------
-                        -- T1 = h + Sigma1(e) + Ch(e,f,g) + K[t] + W[t]
-                        T1_0 := add5_csa(h, big_sigma1(e), ch(e, f, g), k0, w0);
+                        T1_0 := add4_csa(h, big_sigma1(e), ch(e, f, g), kw0);
                         -- T2 = Sigma0(a) + Maj(a,b,c)
-                        T2_0 := add3_csa(big_sigma0(a), maj(a, b, c), (others => '0'));
+                        T2_0 := add2(big_sigma0(a), maj(a, b, c));
                         -- New values
-                        a0 := std_logic_vector(unsigned(T1_0) + unsigned(T2_0));
-                        e0 := std_logic_vector(unsigned(d) + unsigned(T1_0));
+                        a0 := add2(T1_0, T2_0);
+                        e0 := add2(d, T1_0);
 
                         -------------------------------------------------------
                         -- Round t+1 (second of 4)
                         -- After round t: (a,b,c,d,e,f,g,h) = (a0,a,b,c,e0,e,f,g)
                         -------------------------------------------------------
-                        T1_1 := add5_csa(g, big_sigma1(e0), ch(e0, e, f), k1, w1);
-                        T2_1 := add3_csa(big_sigma0(a0), maj(a0, a, b), (others => '0'));
-                        a1 := std_logic_vector(unsigned(T1_1) + unsigned(T2_1));
-                        e1 := std_logic_vector(unsigned(c) + unsigned(T1_1));
+                        T1_1 := add4_csa(g, big_sigma1(e0), ch(e0, e, f), kw1);
+                        T2_1 := add2(big_sigma0(a0), maj(a0, a, b));
+                        a1 := add2(T1_1, T2_1);
+                        e1 := add2(c, T1_1);
 
                         -------------------------------------------------------
                         -- Round t+2 (third of 4)
                         -- After round t+1: (a,b,c,d,e,f,g,h) = (a1,a0,a,b,e1,e0,e,f)
                         -------------------------------------------------------
-                        T1_2 := add5_csa(f, big_sigma1(e1), ch(e1, e0, e), k2, w2);
-                        T2_2 := add3_csa(big_sigma0(a1), maj(a1, a0, a), (others => '0'));
-                        a2 := std_logic_vector(unsigned(T1_2) + unsigned(T2_2));
-                        e2 := std_logic_vector(unsigned(b) + unsigned(T1_2));
+                        T1_2 := add4_csa(f, big_sigma1(e1), ch(e1, e0, e), kw2);
+                        T2_2 := add2(big_sigma0(a1), maj(a1, a0, a));
+                        a2 := add2(T1_2, T2_2);
+                        e2 := add2(b, T1_2);
 
                         -------------------------------------------------------
                         -- Round t+3 (fourth of 4)
                         -- After round t+2: (a,b,c,d,e,f,g,h) = (a2,a1,a0,a,e2,e1,e0,e)
                         -------------------------------------------------------
-                        T1_3 := add5_csa(e, big_sigma1(e2), ch(e2, e1, e0), k3, w3);
-                        T2_3 := add3_csa(big_sigma0(a2), maj(a2, a1, a0), (others => '0'));
-                        a3 := std_logic_vector(unsigned(T1_3) + unsigned(T2_3));
-                        e3 := std_logic_vector(unsigned(a) + unsigned(T1_3));
+                        T1_3 := add4_csa(e, big_sigma1(e2), ch(e2, e1, e0), kw3);
+                        T2_3 := add2(big_sigma0(a2), maj(a2, a1, a0));
+                        a3 := add2(T1_3, T2_3);
+                        e3 := add2(a, T1_3);
 
                         -------------------------------------------------------
                         -- Update registered working variables
@@ -290,6 +302,56 @@ begin
                             state <= UPDATE_HASH;
                         else
                             round_base <= round_base + 4;
+
+                            -- Pre-compute K+W for next cycle (rounds t+4 to t+7)
+                            -- For t+4 < 16: W values are direct from buffer
+                            -- For t+4 >= 16: W values just computed (w0..w3) and buffer
+                            if t + 4 < 16 then
+                                -- Next iteration uses message words directly
+                                kw_pre(0) <= add2(K(to_integer(t + 4)), W(w_idx(t + 4)));
+                                kw_pre(1) <= add2(K(to_integer(t + 5)), W(w_idx(t + 5)));
+                                kw_pre(2) <= add2(K(to_integer(t + 6)), W(w_idx(t + 6)));
+                                kw_pre(3) <= add2(K(to_integer(t + 7)), W(w_idx(t + 7)));
+                            else
+                                -- Next iteration needs computed W values
+                                -- W[t+4..t+7] will be computed next cycle, use formula
+                                -- For pre-computation we compute K + W where W comes from:
+                                -- W[t+4] = sigma1(W[t+2]) + W[t-3] + sigma0(W[t-11]) + W[t-12]
+                                -- But W[t+2] = w2 (computed this cycle for t >= 16) or W(t+2) for t < 16
+                                -- This is complex, so for t >= 12, we compute inline next cycle
+                                -- For t = 12: t+4 = 16, need to compute W[16..19]
+                                -- Use the newly computed w0..w3 which are W[t..t+3]
+                                kw_pre(0) <= add2(K(to_integer(t + 4)), std_logic_vector(
+                                    unsigned(small_sigma1(w2)) +
+                                    unsigned(W(w_idx(t - 3))) +
+                                    unsigned(small_sigma0(W(w_idx(t - 11)))) +
+                                    unsigned(W(w_idx(t - 12)))));
+                                kw_pre(1) <= add2(K(to_integer(t + 5)), std_logic_vector(
+                                    unsigned(small_sigma1(w3)) +
+                                    unsigned(W(w_idx(t - 2))) +
+                                    unsigned(small_sigma0(W(w_idx(t - 10)))) +
+                                    unsigned(W(w_idx(t - 11)))));
+                                -- W[t+6] depends on W[t+4] which we just computed inline above
+                                -- This creates a dependency chain - compute simpler version
+                                kw_pre(2) <= add2(K(to_integer(t + 6)), std_logic_vector(
+                                    unsigned(small_sigma1(std_logic_vector(
+                                        unsigned(small_sigma1(w2)) +
+                                        unsigned(W(w_idx(t - 3))) +
+                                        unsigned(small_sigma0(W(w_idx(t - 11)))) +
+                                        unsigned(W(w_idx(t - 12)))))) +
+                                    unsigned(W(w_idx(t - 1))) +
+                                    unsigned(small_sigma0(W(w_idx(t - 9)))) +
+                                    unsigned(W(w_idx(t - 10)))));
+                                kw_pre(3) <= add2(K(to_integer(t + 7)), std_logic_vector(
+                                    unsigned(small_sigma1(std_logic_vector(
+                                        unsigned(small_sigma1(w3)) +
+                                        unsigned(W(w_idx(t - 2))) +
+                                        unsigned(small_sigma0(W(w_idx(t - 10)))) +
+                                        unsigned(W(w_idx(t - 11)))))) +
+                                    unsigned(w0) +
+                                    unsigned(small_sigma0(W(w_idx(t - 8)))) +
+                                    unsigned(W(w_idx(t - 9)))));
+                            end if;
                         end if;
 
                     when UPDATE_HASH =>
