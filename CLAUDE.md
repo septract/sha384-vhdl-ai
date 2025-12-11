@@ -14,6 +14,12 @@ nvc -a sha384_fast_pkg.vhd sha384_fast.vhd sha384_fast_tb.vhd && nvc -e sha384_f
 # 8x unrolled optimized implementation
 nvc -a sha384_fast_pkg.vhd sha384_fast8.vhd sha384_fast8_file_tb.vhd && nvc -e sha384_fast8_file_tb && nvc -r sha384_fast8_file_tb
 
+# Pipelined implementation (1 block/cycle throughput)
+nvc -a sha384_fast_pkg.vhd sha384_pipeline.vhd sha384_pipeline_file_tb.vhd && nvc -e sha384_pipeline_file_tb && nvc -r sha384_pipeline_file_tb
+
+# Multi-core implementation (4 parallel pipelines)
+nvc -a sha384_fast_pkg.vhd sha384_pipeline.vhd sha384_multi.vhd sha384_multi_file_tb.vhd && nvc -e sha384_multi_file_tb && nvc -r sha384_multi_file_tb
+
 # Comprehensive test suite (NIST vectors, boundary tests, multi-block, random)
 python3 compare_sha384.py --count 10 --max-len 500
 
@@ -35,9 +41,13 @@ python3 compare_sha384.py --skip-vhdl
 | `sha384_fast.vhd` | 4x unrolled core (~28 cycles/block, 4.2x speedup) |
 | `sha384_fast_tb.vhd` | Testbench for 4x with cycle counting |
 | `sha384_fast8.vhd` | 8x unrolled core (~18 cycles/block, 6.5x speedup) |
+| `sha384_pipeline.vhd` | 10-stage pipelined core (1 block/cycle, ~117x speedup) |
+| `sha384_multi.vhd` | Multi-core wrapper (N parallel pipelines) |
 | `sha384_file_tb.vhd` | File-based testbench (reads test_vectors.txt) |
 | `sha384_fast_file_tb.vhd` | File-based testbench for 4x (512-bit interface) |
 | `sha384_fast8_file_tb.vhd` | File-based testbench for 8x (512-bit interface) |
+| `sha384_pipeline_file_tb.vhd` | File-based testbench for pipeline (1024-bit interface) |
+| `sha384_multi_file_tb.vhd` | File-based testbench for multi (tests all 4 cores) |
 | `compare_sha384.py` | Comprehensive test suite: NIST vectors, boundary tests, OpenSSL cross-check |
 | `OPTIMIZATIONS.md` | Detailed documentation of all optimizations |
 
@@ -60,6 +70,10 @@ h=g, g=f, f=e, e=d+T1, d=c, c=b, b=a, a=T1+T2
 3. **512-bit data interface** - Load 8 words/cycle instead of 1
 4. **K+W pre-computation** - Compute K[t]+W[t] one cycle ahead
 5. **Circular W buffer** - Modular indexing instead of shifting
+6. **Full pipelining** - 10-stage pipeline for 1 block/cycle throughput
+7. **1024-bit data interface** - Load full block in one cycle
+8. **Merged state machine** - No overhead states for streaming
+9. **Multi-core** - Parallel engines for independent messages
 
 ## Test Coverage
 

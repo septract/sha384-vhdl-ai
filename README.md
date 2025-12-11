@@ -14,11 +14,13 @@ A synthesizable VHDL implementation of the SHA-384 cryptographic hash function, 
 
 ## Implementations
 
-| Implementation | File | Cycles/Block | Speedup | Description |
-|----------------|------|--------------|---------|-------------|
-| Baseline | `sha384.vhd` | ~117 | 1x | Simple 1 round/cycle |
-| Fast (4x) | `sha384_fast.vhd` | ~28 | 4.2x | 4 rounds/cycle, CSA, 512-bit input |
-| Fast (8x) | `sha384_fast8.vhd` | ~18 | **6.5x** | 8 rounds/cycle, CSA, 512-bit input |
+| Implementation | File | Cycles/Block | Throughput | Speedup | Description |
+|----------------|------|--------------|------------|---------|-------------|
+| Baseline | `sha384.vhd` | ~117 | 1/117 blk/cyc | 1x | Simple 1 round/cycle |
+| Fast (4x) | `sha384_fast.vhd` | ~28 | 1/28 blk/cyc | 4.2x | 4 rounds/cycle, CSA |
+| Fast (8x) | `sha384_fast8.vhd` | ~18 | 1/18 blk/cyc | 6.5x | 8 rounds/cycle, CSA |
+| **Pipeline** | `sha384_pipeline.vhd` | 10 (lat) | **1 blk/cyc** | **~117x** | Full 10-stage pipeline |
+| **Multi (4x)** | `sha384_multi.vhd` | 10 (lat) | **4 blk/cyc** | **~468x** | 4 parallel pipelines |
 
 See [OPTIMIZATIONS.md](OPTIMIZATIONS.md) for detailed optimization documentation.
 
@@ -33,9 +35,13 @@ See [OPTIMIZATIONS.md](OPTIMIZATIONS.md) for detailed optimization documentation
 | `sha384_fast.vhd` | 4x unrolled optimized core |
 | `sha384_fast_tb.vhd` | Testbench for 4x with cycle counting |
 | `sha384_fast8.vhd` | 8x unrolled optimized core |
+| `sha384_pipeline.vhd` | Full 10-stage pipelined core (1 block/cycle) |
+| `sha384_multi.vhd` | Multi-core wrapper (N parallel pipelines) |
 | `sha384_file_tb.vhd` | File-based testbench for baseline |
 | `sha384_fast_file_tb.vhd` | File-based testbench for 4x |
 | `sha384_fast8_file_tb.vhd` | File-based testbench for 8x |
+| `sha384_pipeline_file_tb.vhd` | File-based testbench for pipeline |
+| `sha384_multi_file_tb.vhd` | File-based testbench for multi (4 cores) |
 | `compare_sha384.py` | Comprehensive test suite with NIST vectors |
 | `OPTIMIZATIONS.md` | Detailed optimization documentation |
 
@@ -77,6 +83,28 @@ entity sha384_fast is  -- or sha384_fast8
 end entity;
 ```
 
+### Pipelined (1024-bit input, 1 block/cycle throughput)
+
+```vhdl
+entity sha384_pipeline is
+    port (
+        clk        : in  std_logic;
+        reset      : in  std_logic;
+        start      : in  std_logic;                        -- Start new message
+        data_in    : in  std_logic_vector(1023 downto 0);  -- Full block at once
+        data_valid : in  std_logic;
+        last_block : in  std_logic;
+        ready      : out std_logic;
+        h_in       : in  std_logic_vector(511 downto 0);   -- For multi-block continuation
+        use_h_in   : in  std_logic;
+        hash_out   : out std_logic_vector(383 downto 0);
+        hash_valid : out std_logic;
+        h_out      : out std_logic_vector(511 downto 0);   -- Intermediate hash state
+        h_out_valid: out std_logic
+    );
+end entity;
+```
+
 ## Build & Test
 
 Requires [NVC](https://github.com/nickg/nvc) VHDL simulator (or any VHDL-2008 compatible simulator).
@@ -97,6 +125,18 @@ nvc -a sha384_fast_pkg.vhd sha384_fast.vhd sha384_fast_tb.vhd && nvc -e sha384_f
 
 ```bash
 nvc -a sha384_fast_pkg.vhd sha384_fast8.vhd sha384_fast8_file_tb.vhd && nvc -e sha384_fast8_file_tb && nvc -r sha384_fast8_file_tb
+```
+
+### Pipelined (maximum throughput)
+
+```bash
+nvc -a sha384_fast_pkg.vhd sha384_pipeline.vhd sha384_pipeline_file_tb.vhd && nvc -e sha384_pipeline_file_tb && nvc -r sha384_pipeline_file_tb
+```
+
+### Multi-core (4 parallel pipelines)
+
+```bash
+nvc -a sha384_fast_pkg.vhd sha384_pipeline.vhd sha384_multi.vhd sha384_multi_file_tb.vhd && nvc -e sha384_multi_file_tb && nvc -r sha384_multi_file_tb
 ```
 
 ### Comprehensive Test Suite

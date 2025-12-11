@@ -202,9 +202,148 @@ T1 computation: add4_csa(h, Σ1(e), Ch(e,f,g), kw_pre)
 
 The CSA optimization reduces the critical path by approximately 40-50%, enabling higher clock frequencies.
 
+---
+
+## Future Optimizations (sha384_pipeline)
+
+The following optimizations are implemented in `sha384_pipeline.vhd` for maximum throughput:
+
+### 7. Full Pipelining
+
+**Impact: 🔥🔥🔥 Highest**
+
+Process multiple blocks simultaneously through a 10-stage pipeline. Each stage handles 8 rounds, allowing a new block to enter every cycle (after pipeline fills).
+
+```
+┌──────────┐   ┌──────────┐   ┌──────────┐       ┌──────────┐
+│ Stage 0  │ → │ Stage 1  │ → │ Stage 2  │ → ... │ Stage 9  │ → Hash
+│ Rnd 0-7  │   │ Rnd 8-15 │   │ Rnd 16-23│       │ Rnd 72-79│
+└──────────┘   └──────────┘   └──────────┘       └──────────┘
+   Block N      Block N-1      Block N-2          Block N-9
+```
+
+**Performance:**
+- Latency: 10 cycles per block (same as sha384_fast8)
+- Throughput: 1 block per cycle (after pipeline fills)
+- **10x throughput improvement** for streaming data
+
+**Architecture:**
+```vhdl
+-- Each pipeline stage holds:
+type pipeline_stage is record
+    valid     : std_logic;           -- Stage contains valid data
+    last      : std_logic;           -- This is the final block
+    msg_id    : unsigned(7 downto 0); -- Message identifier
+    hv        : word64_array(0 to 7); -- Hash state for this message
+    va..vh    : word64;              -- Working variables
+    W         : word64_array(0 to 15); -- Message schedule
+end record;
+```
+
+**Multi-block handling:**
+- Each block carries its hash state (H values) through the pipeline
+- For multi-block messages, intermediate hash updates are forwarded
+- `msg_id` tracks which message each block belongs to
+
+### 8. 1024-bit Data Interface
+
+**Impact: 🔥 Quick win**
+
+Load entire 1024-bit block in a single cycle instead of two 512-bit loads.
+
+```vhdl
+-- Previous (sha384_fast8)
+data_in : in std_logic_vector(511 downto 0);  -- 2 cycles to load
+
+-- New (sha384_pipeline)
+data_in : in std_logic_vector(1023 downto 0); -- 1 cycle to load
+```
+
+**Savings:** 1 cycle per block during load phase.
+
+### 9. Merged State Machine
+
+**Impact: 🔥 Moderate**
+
+Eliminate state machine overhead by removing intermediate states:
+
+```
+-- Previous flow (sha384_fast8):
+IDLE → LOAD_BLOCK (2 cycles) → COMPRESS (10 cycles) → UPDATE_HASH → DONE
+Total overhead: ~4-5 cycles
+
+-- New flow (sha384_pipeline):
+Direct injection into pipeline stage 0
+No intermediate states for streaming mode
+Total overhead: 0 cycles (pipelined)
+```
+
+**Implementation:**
+- Block loads directly into pipeline stage 0
+- Hash update merged into final pipeline stage
+- No IDLE/DONE states needed for continuous streaming
+
+### 10. Speculative W Pre-computation
+
+**Impact: 🔥 Moderate**
+
+Compute W schedule values for the next stage in parallel with current round computation:
+
+```vhdl
+-- In stage N, while processing rounds 8N to 8N+7:
+-- Simultaneously compute W values for stage N+1
+W_next(0..7) <= compute_w_schedule(W_current, round_base + 8);
+```
+
+**Benefits:**
+- Removes W computation from critical path
+- Each stage only performs round computation
+- W values ready when block advances to next stage
+
+### 11. Parallel Hash Engines (sha384_multi)
+
+**Impact: 🔥🔥🔥 Linear scaling**
+
+Instantiate N parallel sha384_pipeline cores for independent messages:
+
+```vhdl
+entity sha384_multi is
+    generic (
+        NUM_CORES : positive := 4
+    );
+    port (
+        data_in    : in  std_logic_vector(NUM_CORES*1024-1 downto 0);
+        hash_out   : out std_logic_vector(NUM_CORES*384-1 downto 0);
+        ...
+    );
+end entity;
+```
+
+**Performance:**
+- 4 cores: 4 blocks/cycle throughput
+- 8 cores: 8 blocks/cycle throughput
+- Linear scaling with FPGA resources
+
+**Best for:** Hashing many independent messages (e.g., cryptocurrency mining, certificate batch validation, Merkle tree construction).
+
+---
+
+## Performance Summary (All Implementations)
+
+| Implementation | Cycles/Block | Throughput | Speedup |
+|----------------|--------------|------------|---------|
+| `sha384` (baseline) | ~117 | 1/117 blocks/cyc | 1x |
+| `sha384_fast` (4x) | 28 | 1/28 blocks/cyc | 4.2x |
+| `sha384_fast8` (8x) | ~18 | 1/18 blocks/cyc | 6.5x |
+| `sha384_pipeline` | 10 (latency) | **1 block/cyc** | **~117x** |
+| `sha384_multi` (4 cores) | 10 (latency) | **4 blocks/cyc** | **~468x** |
+
+---
+
 ## References
 
 - [FIPS 180-4: Secure Hash Standard](https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.180-4.pdf)
 - [Improving SHA-2 Hardware Implementations](https://www.researchgate.net/publication/221291748_Improving_SHA-2_Hardware_Implementations)
 - [Optimising SHA-512 on FPGAs](https://digital-library.theiet.org/doi/full/10.1049/iet-cdt.2013.0010)
 - [1 Gbit/s Partially Unrolled SHA-512](https://www.researchgate.net/publication/225137595_A_1_Gbits_Partially_Unrolled_Architecture_of_Hash_Functions_SHA-1_and_SHA-512)
+- [High-Speed SHA-2 Accelerator](https://ieeexplore.ieee.org/document/7011374)

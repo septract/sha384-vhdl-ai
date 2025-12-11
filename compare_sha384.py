@@ -206,6 +206,42 @@ def run_vhdl_test(project_dir: Path, impl: str) -> dict:
         design = "sha384_fast8.vhd"
         tb = "sha384_fast8_file_tb.vhd"
         entity = "sha384_fast8_file_tb"
+    elif impl == "pipeline":
+        pkg = "sha384_fast_pkg.vhd"
+        design = "sha384_pipeline.vhd"
+        tb = "sha384_pipeline_file_tb.vhd"
+        entity = "sha384_pipeline_file_tb"
+    elif impl == "multi":
+        # Multi needs both pipeline and multi designs
+        pkg = "sha384_fast_pkg.vhd"
+        design = "sha384_pipeline.vhd"
+        design2 = "sha384_multi.vhd"
+        tb = "sha384_multi_file_tb.vhd"
+        entity = "sha384_multi_file_tb"
+        # Compile with extra design file
+        cmd = ["nvc", "-a", pkg, design, design2, tb]
+        result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True)
+        if result.returncode != 0:
+            return {"error": f"Compile failed: {result.stderr}"}
+        # Elaborate and run (skip normal compile below)
+        cmd = ["nvc", "-e", entity]
+        result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True)
+        if result.returncode != 0:
+            return {"error": f"Elaborate failed: {result.stderr}"}
+        cmd = ["nvc", "-r", entity]
+        result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True, timeout=120)
+        output = result.stdout + result.stderr
+        results = {"passed": 0, "failed": 0, "hashes": []}
+        for line in output.split('\n'):
+            if "PASS" in line:
+                results["passed"] += 1
+            elif "FAIL" in line:
+                results["failed"] += 1
+            elif "Hash:" in line:
+                parts = line.split("Hash:")
+                if len(parts) > 1:
+                    results["hashes"].append(parts[1].strip().lower())
+        return results
     else:
         return {"error": f"Unknown impl: {impl}"}
 
@@ -223,7 +259,7 @@ def run_vhdl_test(project_dir: Path, impl: str) -> dict:
 
     # Run
     cmd = ["nvc", "-r", entity]
-    result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True, timeout=30)
+    result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True, timeout=60)
 
     output = result.stdout + result.stderr
 
@@ -542,6 +578,7 @@ def main():
         baseline_tb = project_dir / "sha384_file_tb.vhd"
         fast_tb = project_dir / "sha384_fast_file_tb.vhd"
         fast8_tb = project_dir / "sha384_fast8_file_tb.vhd"
+        pipeline_tb = project_dir / "sha384_pipeline_file_tb.vhd"
 
         if not baseline_tb.exists() or not fast_tb.exists():
             print("\n  File-based testbenches not found!")
@@ -578,6 +615,27 @@ def main():
             else:
                 print(f"    Passed: {fast8_results['passed']}/{len(test_cases)}")
 
+        pipeline_results = {"hashes": [], "passed": 0}
+        if pipeline_tb.exists():
+            print("\n  Running pipelined sha384_pipeline...")
+            pipeline_results = run_vhdl_test(project_dir, "pipeline")
+            if "error" in pipeline_results:
+                print(f"    ERROR: {pipeline_results['error']}")
+                all_ok = False
+            else:
+                print(f"    Passed: {pipeline_results['passed']}/{len(test_cases)}")
+
+        multi_tb = project_dir / "sha384_multi_file_tb.vhd"
+        multi_results = {"hashes": [], "passed": 0}
+        if multi_tb.exists():
+            print("\n  Running multi-core sha384_multi (4 cores)...")
+            multi_results = run_vhdl_test(project_dir, "multi")
+            if "error" in multi_results:
+                print(f"    ERROR: {multi_results['error']}")
+                all_ok = False
+            else:
+                print(f"    Passed: {multi_results['passed']}/{len(test_cases)}")
+
         # Detailed comparison
         print("\n" + "=" * 60)
         print("DETAILED RESULTS")
@@ -587,12 +645,16 @@ def main():
             baseline_hash = baseline_results['hashes'][i] if i < len(baseline_results.get('hashes', [])) else None
             fast_hash = fast_results['hashes'][i] if i < len(fast_results.get('hashes', [])) else None
             fast8_hash = fast8_results['hashes'][i] if i < len(fast8_results.get('hashes', [])) else None
+            pipeline_hash = pipeline_results['hashes'][i] if i < len(pipeline_results.get('hashes', [])) else None
+            multi_hash = multi_results['hashes'][i] if i < len(multi_results.get('hashes', [])) else None
 
             baseline_ok = baseline_hash == expected_hash
             fast_ok = fast_hash == expected_hash
             fast8_ok = fast8_hash == expected_hash if fast8_tb.exists() else True
+            pipeline_ok = pipeline_hash == expected_hash if pipeline_tb.exists() else True
+            multi_ok = multi_hash == expected_hash if multi_tb.exists() else True
 
-            if not (baseline_ok and fast_ok and fast8_ok):
+            if not (baseline_ok and fast_ok and fast8_ok and pipeline_ok and multi_ok):
                 all_ok = False
                 print(f"\n  {name}: MISMATCH")
                 print(f"    Expected: {expected_hash}")
@@ -602,6 +664,10 @@ def main():
                     print(f"    Fast4x:   {fast_hash}")
                 if not fast8_ok:
                     print(f"    Fast8x:   {fast8_hash}")
+                if not pipeline_ok:
+                    print(f"    Pipeline: {pipeline_hash}")
+                if not multi_ok:
+                    print(f"    Multi:    {multi_hash}")
 
     # ==========================================================================
     # Final Summary
@@ -621,6 +687,8 @@ def main():
         print("  ✓ Random tests passed")
         if shutil.which("openssl"):
             print("  ✓ OpenSSL cross-verification passed")
+        if not args.skip_vhdl:
+            print("  ✓ All 5 VHDL implementations verified (baseline, fast, fast8, pipeline, multi)")
         return 0
     else:
         print("\n  ✗ Some tests FAILED!")
