@@ -66,11 +66,18 @@ def run_vhdl_test(project_dir: Path, impl: str) -> dict:
         design = "sha384.vhd"
         tb = "sha384_file_tb.vhd"
         entity = "sha384_file_tb"
-    else:
+    elif impl == "fast":
         pkg = "sha384_fast_pkg.vhd"
         design = "sha384_fast.vhd"
         tb = "sha384_fast_file_tb.vhd"
         entity = "sha384_fast_file_tb"
+    elif impl == "fast8":
+        pkg = "sha384_fast_pkg.vhd"
+        design = "sha384_fast8.vhd"
+        tb = "sha384_fast8_file_tb.vhd"
+        entity = "sha384_fast8_file_tb"
+    else:
+        return {"error": f"Unknown impl: {impl}"}
 
     # Compile
     cmd = ["nvc", "-a", pkg, design, tb]
@@ -160,12 +167,23 @@ def main():
     else:
         print(f"  Passed: {baseline_results['passed']}/{args.count}")
 
-    print("\nRunning optimized sha384_fast...")
+    print("\nRunning optimized sha384_fast (4x)...")
     fast_results = run_vhdl_test(project_dir, "fast")
     if "error" in fast_results:
         print(f"  ERROR: {fast_results['error']}")
     else:
         print(f"  Passed: {fast_results['passed']}/{args.count}")
+
+    # Check if fast8 testbench exists
+    fast8_tb = project_dir / "sha384_fast8_file_tb.vhd"
+    fast8_results = {"hashes": [], "passed": 0}
+    if fast8_tb.exists():
+        print("\nRunning optimized sha384_fast8 (8x)...")
+        fast8_results = run_vhdl_test(project_dir, "fast8")
+        if "error" in fast8_results:
+            print(f"  ERROR: {fast8_results['error']}")
+        else:
+            print(f"  Passed: {fast8_results['passed']}/{args.count}")
 
     # Summary
     print("\n" + "=" * 60)
@@ -174,11 +192,11 @@ def main():
 
     all_match = True
     for i, (name, _, py_hash) in enumerate(test_cases):
-        py_ok = True  # Python is reference
         baseline_ok = i < len(baseline_results.get('hashes', [])) and baseline_results['hashes'][i] == py_hash
         fast_ok = i < len(fast_results.get('hashes', [])) and fast_results['hashes'][i] == py_hash
+        fast8_ok = i < len(fast8_results.get('hashes', [])) and fast8_results['hashes'][i] == py_hash
 
-        status = "OK" if (baseline_ok and fast_ok) else "MISMATCH"
+        status = "OK" if (baseline_ok and fast_ok and (not fast8_tb.exists() or fast8_ok)) else "MISMATCH"
         if status == "MISMATCH":
             all_match = False
             print(f"Test {i} ({name}): {status}")
@@ -186,9 +204,11 @@ def main():
             if i < len(baseline_results.get('hashes', [])):
                 print(f"  Baseline: {baseline_results['hashes'][i]}")
             if i < len(fast_results.get('hashes', [])):
-                print(f"  Fast:     {fast_results['hashes'][i]}")
+                print(f"  Fast4x:   {fast_results['hashes'][i]}")
+            if i < len(fast8_results.get('hashes', [])):
+                print(f"  Fast8x:   {fast8_results['hashes'][i]}")
 
-    if all_match and not ("error" in baseline_results or "error" in fast_results):
+    if all_match and not ("error" in baseline_results or "error" in fast_results or "error" in fast8_results):
         print("All implementations match!")
         return 0
     else:

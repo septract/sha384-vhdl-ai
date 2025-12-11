@@ -7,7 +7,8 @@ This document describes the optimizations implemented in `sha384_fast` compared 
 | Implementation | Cycles/Block | Speedup |
 |----------------|--------------|---------|
 | `sha384` (baseline) | ~117 | 1x |
-| `sha384_fast` | 28 | **4.2x** |
+| `sha384_fast` (4x) | 28 | 4.2x |
+| `sha384_fast8` (8x) | ~18 | **6.5x** |
 
 ## Implemented Optimizations
 
@@ -129,48 +130,59 @@ Benefits:
 
 Note: Actual measured cycles are slightly higher (~28) due to state machine transitions.
 
-## Future Optimization: 8x Loop Unrolling
+### 6. 8x Loop Unrolling (sha384_fast8)
 
-**Status:** Not implemented (attempted, has bugs)
+**File:** `sha384_fast8.vhd`
 
-### Concept
+Process 8 SHA-384 rounds per clock cycle instead of 4.
 
-Process 8 rounds per clock cycle:
 ```
-Compression: 10 cycles (8 rounds/cycle) instead of 20 cycles
+4x version: 20 cycles for compression (4 rounds/cycle)
+8x version: 10 cycles for compression (8 rounds/cycle)
 ```
 
-### Challenges
+#### State Cascade
 
-1. **Long combinational chain**: 8 cascaded rounds with data dependencies
-2. **W schedule complexity**: Need 8 new W values per cycle, with inter-dependencies:
-   ```
-   W[t+2] depends on W[t]
-   W[t+3] depends on W[t+1]
-   W[t+4] depends on W[t+2]
-   ...
-   ```
-3. **Pre-computation complexity**: Computing 8 future K+W values requires knowing W values that depend on values being computed in the same cycle
+The 8-round cascade tracks working variables through all 8 rounds:
 
-### Implementation Notes
-
-The 8x unrolling was attempted with:
-- 8 T1/T2 computation stages
-- 8 W schedule computations with cascading dependencies
-- 8-element `kw_pre` array
-
-The implementation compiled but produced incorrect hashes. Likely issues:
-- State tracking errors in the 8-round cascade
-- W schedule index calculations for the circular buffer
-- Pre-computation formula errors for rounds t+8 to t+15
-
-### Estimated Benefit
-
-If implemented correctly:
 ```
-Cycles/block: ~16 (2 load + 10 compress + overhead)
-Speedup: ~7x vs baseline, ~1.75x vs current 4x version
+Round t:   (a,b,c,d,e,f,g,h) → (a0,a,b,c,e0,e,f,g)
+Round t+1: (a0,a,b,c,e0,e,f,g) → (a1,a0,a,b,e1,e0,e,f)
+...
+Round t+7: (a6,a5,a4,a3,e6,e5,e4,e3) → (a7,a6,a5,a4,e7,e6,e5,e4)
 ```
+
+Final registered state: `(va,vb,vc,vd,ve,vf,vg,vh) = (a7,a6,a5,a4,e7,e6,e5,e4)`
+
+#### W Schedule Dependencies
+
+For t >= 16, need to compute 8 W values with a dependency chain:
+
+```
+w0 = σ1(W[t-2]) + W[t-7] + σ0(W[t-15]) + W[t-16]  -- from buffer
+w1 = σ1(W[t-1]) + W[t-6] + σ0(W[t-14]) + W[t-15]  -- from buffer
+w2 = σ1(w0) + W[t-5] + σ0(W[t-13]) + W[t-14]      -- depends on w0
+w3 = σ1(w1) + W[t-4] + σ0(W[t-12]) + W[t-13]      -- depends on w1
+w4 = σ1(w2) + W[t-3] + σ0(W[t-11]) + W[t-12]      -- depends on w2
+w5 = σ1(w3) + W[t-2] + σ0(W[t-10]) + W[t-11]      -- depends on w3
+w6 = σ1(w4) + W[t-1] + σ0(W[t-9]) + W[t-10]       -- depends on w4
+w7 = σ1(w5) + w0 + σ0(W[t-8]) + W[t-9]            -- depends on w5, w0
+```
+
+#### Performance
+
+| Implementation | Cycles/Block | Speedup vs Baseline |
+|----------------|--------------|---------------------|
+| `sha384` (baseline) | ~117 | 1x |
+| `sha384_fast` (4x) | 28 | 4.2x |
+| `sha384_fast8` (8x) | ~18 | **6.5x** |
+
+#### Trade-offs
+
+- **Longer critical path**: 8 cascaded rounds + W dependency chain
+- **More combinational logic**: 8 T1/T2 computations, 8 W computations
+- **Higher resource usage**: More adders, more routing
+- **May limit Fmax**: Very deep combinational path may reduce achievable clock frequency
 
 ## Critical Path Analysis
 
