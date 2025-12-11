@@ -1,5 +1,7 @@
 # SHA-384 VHDL Implementation
 
+> **WARNING: This code is AI-generated and has NOT been audited for security or correctness. Do NOT use in production systems. This repository is for educational and experimental purposes only. Cryptographic implementations require rigorous review by domain experts before any real-world use.**
+
 A synthesizable VHDL implementation of the SHA-384 cryptographic hash function, conforming to [FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.180-4.pdf).
 
 ## Features

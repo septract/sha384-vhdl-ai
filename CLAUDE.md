@@ -1,5 +1,7 @@
 # Claude Code Project Context
 
+> **WARNING: AI-generated code - NOT for production use. Educational/experimental only.**
+
 ## Build & Test
 
 ```bash
