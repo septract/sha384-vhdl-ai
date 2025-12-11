@@ -204,9 +204,9 @@ The CSA optimization reduces the critical path by approximately 40-50%, enabling
 
 ---
 
-## Future Optimizations (sha384_pipeline)
+## Pipeline Optimizations (sha384_pipeline, sha384_multi)
 
-The following optimizations are implemented in `sha384_pipeline.vhd` for maximum throughput:
+The following optimizations are implemented in `sha384_pipeline.vhd` and `sha384_multi.vhd` for maximum throughput:
 
 ### 7. Full Pipelining
 
