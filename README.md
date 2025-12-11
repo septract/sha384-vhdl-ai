@@ -6,29 +6,40 @@ A synthesizable VHDL implementation of the SHA-384 cryptographic hash function, 
 
 - **Fully synthesizable** RTL design suitable for FPGA/ASIC
 - **Multi-block message support** - handles messages of arbitrary length
-- **Verified** against NIST test vectors from multiple sources
+- **Verified** against NIST test vectors and randomized testing
+- **Multiple implementations** - baseline and high-throughput optimized versions
 - **Clean interface** - simple handshaking protocol for data input
 
-## Architecture
+## Implementations
 
-The implementation uses a state machine with the following states:
-- `IDLE` - Waiting for start signal
-- `LOAD_BLOCK` - Receiving 16 × 64-bit words (1024-bit block)
-- `COMPRESS` - Performing 80 rounds of compression
-- `UPDATE_HASH` - Adding working variables to hash state
-- `DONE` - Hash complete, output valid
+| Implementation | File | Cycles/Block | Speedup | Description |
+|----------------|------|--------------|---------|-------------|
+| Baseline | `sha384.vhd` | ~117 | 1x | Simple 1 round/cycle |
+| Fast (4x) | `sha384_fast.vhd` | ~28 | 4.2x | 4 rounds/cycle, CSA, 512-bit input |
+| Fast (8x) | `sha384_fast8.vhd` | ~18 | **6.5x** | 8 rounds/cycle, CSA, 512-bit input |
 
-Memory optimization: Uses a 16-word circular buffer for the message schedule (W), computing W[16-79] on-the-fly rather than storing all 80 values.
+See [OPTIMIZATIONS.md](OPTIMIZATIONS.md) for detailed optimization documentation.
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `sha384_pkg.vhd` | Package with constants (K, H_INIT) and functions (σ, Σ, Ch, Maj) |
-| `sha384.vhd` | Main SHA-384 core entity |
-| `sha384_tb.vhd` | Testbench with 4 NIST test vectors |
+| `sha384_pkg.vhd` | Package with constants (K, H_INIT) and functions |
+| `sha384.vhd` | Baseline SHA-384 core (1 round/cycle) |
+| `sha384_tb.vhd` | Testbench for baseline with NIST test vectors |
+| `sha384_fast_pkg.vhd` | Package with CSA functions for optimized cores |
+| `sha384_fast.vhd` | 4x unrolled optimized core |
+| `sha384_fast_tb.vhd` | Testbench for 4x with cycle counting |
+| `sha384_fast8.vhd` | 8x unrolled optimized core |
+| `sha384_file_tb.vhd` | File-based testbench for baseline |
+| `sha384_fast_file_tb.vhd` | File-based testbench for 4x |
+| `sha384_fast8_file_tb.vhd` | File-based testbench for 8x |
+| `compare_sha384.py` | Python comparison tool (random test vectors) |
+| `OPTIMIZATIONS.md` | Detailed optimization documentation |
 
 ## Interface
+
+### Baseline (64-bit input)
 
 ```vhdl
 entity sha384 is
@@ -46,38 +57,53 @@ entity sha384 is
 end entity;
 ```
 
+### Optimized (512-bit input)
+
+```vhdl
+entity sha384_fast is  -- or sha384_fast8
+    port (
+        clk        : in  std_logic;
+        reset      : in  std_logic;
+        start      : in  std_logic;
+        data_in    : in  std_logic_vector(511 downto 0); -- 8 words per cycle
+        data_valid : in  std_logic;
+        last_block : in  std_logic;
+        ready      : out std_logic;
+        hash_out   : out std_logic_vector(383 downto 0);
+        hash_valid : out std_logic
+    );
+end entity;
+```
+
 ## Build & Test
 
-Requires [NVC](https://github.com/nickg/nvc) VHDL simulator (or any VHDL-2008 compatible simulator):
+Requires [NVC](https://github.com/nickg/nvc) VHDL simulator (or any VHDL-2008 compatible simulator).
+
+### Baseline
 
 ```bash
-# Compile
-nvc -a sha384_pkg.vhd sha384.vhd sha384_tb.vhd
-
-# Elaborate
-nvc -e sha384_tb
-
-# Run
-nvc -r sha384_tb
+nvc -a sha384_pkg.vhd sha384.vhd sha384_tb.vhd && nvc -e sha384_tb && nvc -r sha384_tb
 ```
 
-Expected output:
+### Optimized (4x)
+
+```bash
+nvc -a sha384_fast_pkg.vhd sha384_fast.vhd sha384_fast_tb.vhd && nvc -e sha384_fast_tb && nvc -r sha384_fast_tb
 ```
-SHA-384 Test Suite Starting
-Test 1: SHA-384("abc")
-  PASSED
-Test 2: SHA-384("")
-  PASSED
-Test 3: SHA-384("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
-  PASSED
-Test 4: SHA-384(112-byte message) - TWO BLOCKS
-  PASSED
-Test Summary:
-  Total:  4
-  Passed: 4
-  Failed: 0
-ALL TESTS PASSED!
+
+### Optimized (8x)
+
+```bash
+nvc -a sha384_fast_pkg.vhd sha384_fast8.vhd sha384_fast8_file_tb.vhd && nvc -e sha384_fast8_file_tb && nvc -r sha384_fast8_file_tb
 ```
+
+### Randomized Comparison (all implementations)
+
+```bash
+python3 compare_sha384.py --count 10 --max-len 500
+```
+
+This generates random test vectors, runs Python hashlib as reference, and verifies all VHDL implementations produce matching results.
 
 ## Usage Example
 
@@ -85,7 +111,8 @@ To hash a message:
 
 1. Assert `start` for one clock cycle
 2. For each 1024-bit block:
-   - Send 16 × 64-bit words with `data_valid` high
+   - **Baseline**: Send 16 × 64-bit words with `data_valid` high
+   - **Optimized**: Send 2 × 512-bit words with `data_valid` high
    - Set `last_block` high with the final word of the last block
 3. Wait for `hash_valid` to go high
 4. Read the 384-bit hash from `hash_out`
@@ -113,6 +140,7 @@ T2 = Σ0(a) + Maj(a,b,c)
 Test vectors sourced from:
 - [di-mgt.com.au SHA Test Vectors](https://di-mgt.com.au/sha_testvectors.html)
 - [NIST CAVP](https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program)
+- Python `hashlib` (for randomized testing)
 
 ## References
 
