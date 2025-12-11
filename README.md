@@ -36,7 +36,7 @@ See [OPTIMIZATIONS.md](OPTIMIZATIONS.md) for detailed optimization documentation
 | `sha384_file_tb.vhd` | File-based testbench for baseline |
 | `sha384_fast_file_tb.vhd` | File-based testbench for 4x |
 | `sha384_fast8_file_tb.vhd` | File-based testbench for 8x |
-| `compare_sha384.py` | Python comparison tool (random test vectors) |
+| `compare_sha384.py` | Comprehensive test suite with NIST vectors |
 | `OPTIMIZATIONS.md` | Detailed optimization documentation |
 
 ## Interface
@@ -99,13 +99,26 @@ nvc -a sha384_fast_pkg.vhd sha384_fast.vhd sha384_fast_tb.vhd && nvc -e sha384_f
 nvc -a sha384_fast_pkg.vhd sha384_fast8.vhd sha384_fast8_file_tb.vhd && nvc -e sha384_fast8_file_tb && nvc -r sha384_fast8_file_tb
 ```
 
-### Randomized Comparison (all implementations)
+### Comprehensive Test Suite
 
 ```bash
+# Full test suite (NIST vectors, boundary tests, multi-block, random)
 python3 compare_sha384.py --count 10 --max-len 500
+
+# Quick verification
+python3 compare_sha384.py --quick
+
+# Verify constants only (no VHDL simulation)
+python3 compare_sha384.py --skip-vhdl
 ```
 
-This generates random test vectors, runs Python hashlib as reference, and verifies all VHDL implementations produce matching results.
+The test suite includes:
+- **FIPS 180-4 constant verification** - K[0..79] and H_INIT[0..7] checked against spec
+- **NIST CAVP test vectors** - Official test vectors (empty, "abc", 56-byte, 112-byte)
+- **Boundary length tests** - Critical padding edge cases (55, 111, 127, 128 bytes)
+- **Multi-block stress tests** - Messages requiring 5, 10, 15 blocks
+- **OpenSSL cross-verification** - Independent hash verification (if available)
+- **Random tests** - Randomized input for broad coverage
 
 ## Usage Example
 

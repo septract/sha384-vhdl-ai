@@ -14,8 +14,14 @@ nvc -a sha384_fast_pkg.vhd sha384_fast.vhd sha384_fast_tb.vhd && nvc -e sha384_f
 # 8x unrolled optimized implementation
 nvc -a sha384_fast_pkg.vhd sha384_fast8.vhd sha384_fast8_file_tb.vhd && nvc -e sha384_fast8_file_tb && nvc -r sha384_fast8_file_tb
 
-# Randomized comparison (Python + all VHDL implementations)
+# Comprehensive test suite (NIST vectors, boundary tests, multi-block, random)
 python3 compare_sha384.py --count 10 --max-len 500
+
+# Quick verification (fewer tests, faster)
+python3 compare_sha384.py --quick
+
+# Verify constants only (no VHDL simulation)
+python3 compare_sha384.py --skip-vhdl
 ```
 
 ## Project Structure
@@ -32,7 +38,7 @@ python3 compare_sha384.py --count 10 --max-len 500
 | `sha384_file_tb.vhd` | File-based testbench (reads test_vectors.txt) |
 | `sha384_fast_file_tb.vhd` | File-based testbench for 4x (512-bit interface) |
 | `sha384_fast8_file_tb.vhd` | File-based testbench for 8x (512-bit interface) |
-| `compare_sha384.py` | Python tool: generates random tests, compares all implementations |
+| `compare_sha384.py` | Comprehensive test suite: NIST vectors, boundary tests, OpenSSL cross-check |
 | `OPTIMIZATIONS.md` | Detailed documentation of all optimizations |
 
 ## SHA-384 Algorithm Quick Reference
@@ -55,13 +61,24 @@ h=g, g=f, f=e, e=d+T1, d=c, c=b, b=a, a=T1+T2
 4. **K+W pre-computation** - Compute K[t]+W[t] one cycle ahead
 5. **Circular W buffer** - Modular indexing instead of shifting
 
+## Test Coverage
+
+The `compare_sha384.py` test suite includes:
+
+1. **FIPS 180-4 Constant Verification** - K[0..79] and H_INIT[0..7] checked against spec
+2. **NIST CAVP Test Vectors** - Official test vectors (empty, "abc", 56-byte, 112-byte)
+3. **Boundary Length Tests** - Critical padding edge cases (55, 111, 127, 128 bytes, etc.)
+4. **Multi-Block Stress Tests** - Messages requiring 5, 10, 15 blocks
+5. **OpenSSL Cross-Verification** - Independent hash verification
+6. **Random Tests** - Randomized input for broad coverage
+
 ## Debugging Crypto HDL
 
 1. **Verify constants first** - K values and initial hash against FIPS 180-4
 2. **Test functions in isolation** - sigma, ch, maj with known inputs
 3. **Trace round-by-round** - find FIRST divergence from reference
 4. **Check W schedule** - especially circular buffer indexing for t≥16
-5. **Use compare_sha384.py** - randomized testing catches edge cases
+5. **Use compare_sha384.py** - comprehensive testing catches edge cases
 
 ## Key Specifications
 
