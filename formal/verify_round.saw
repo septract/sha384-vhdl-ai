@@ -1,0 +1,75 @@
+// SAW Formal Verification of SHA-384 Round Function
+// Verifies the VHDL implementation against Cryptol specification
+
+enable_experimental;
+
+print "========================================";
+print "SHA-384 Round Function Verification";
+print "========================================";
+print "";
+
+print "Loading VHDL module from Yosys JSON...";
+m <- yosys_import "sha384_round.json";
+print "  Loaded successfully!";
+print "";
+
+// Define the Cryptol specification for SHA-384 round function
+let {{
+    // Rotate right for 64-bit words
+    rotr64 : [64] -> [6] -> [64]
+    rotr64 x n = x >>> n
+
+    // Big Sigma 0: ROTR^28(x) XOR ROTR^34(x) XOR ROTR^39(x)
+    big_sigma0 : [64] -> [64]
+    big_sigma0 x = rotr64 x 28 ^ rotr64 x 34 ^ rotr64 x 39
+
+    // Big Sigma 1: ROTR^14(x) XOR ROTR^18(x) XOR ROTR^41(x)
+    big_sigma1 : [64] -> [64]
+    big_sigma1 x = rotr64 x 14 ^ rotr64 x 18 ^ rotr64 x 41
+
+    // Ch(x,y,z) = (x AND y) XOR (NOT x AND z)
+    ch : [64] -> [64] -> [64] -> [64]
+    ch x y z = (x && y) ^ (~x && z)
+
+    // Maj(x,y,z) = (x AND y) XOR (x AND z) XOR (y AND z)
+    maj : [64] -> [64] -> [64] -> [64]
+    maj x y z = (x && y) ^ (x && z) ^ (y && z)
+
+    // SHA-384 round function specification
+    // Input: 8 working variables (a-h), K constant, W word
+    // Output: 8 new working variables
+    sha384_round_spec : { a_in : [64], b_in : [64], c_in : [64], d_in : [64],
+                          e_in : [64], f_in : [64], g_in : [64], h_in : [64],
+                          k : [64], w : [64] }
+                     -> { a_out : [64], b_out : [64], c_out : [64], d_out : [64],
+                          e_out : [64], f_out : [64], g_out : [64], h_out : [64] }
+    sha384_round_spec inp = { a_out = t1 + t2
+                            , b_out = inp.a_in
+                            , c_out = inp.b_in
+                            , d_out = inp.c_in
+                            , e_out = inp.d_in + t1
+                            , f_out = inp.e_in
+                            , g_out = inp.f_in
+                            , h_out = inp.g_in
+                            }
+      where
+        t1 = inp.h_in + big_sigma1 inp.e_in + ch inp.e_in inp.f_in inp.g_in + inp.k + inp.w
+        t2 = big_sigma0 inp.a_in + maj inp.a_in inp.b_in inp.c_in
+}};
+
+print "Cryptol specification defined.";
+print "";
+print "Verifying VHDL sha384_round equals Cryptol spec...";
+print "(This proves the round function is correct for ALL possible inputs)";
+print "";
+
+// Verify the VHDL round function matches the Cryptol specification
+round_correct <- yosys_verify {{ m.sha384_round }} [] {{ sha384_round_spec }} [] z3;
+
+print "";
+print "========================================";
+print "VERIFICATION SUCCESSFUL!";
+print "========================================";
+print "";
+print "The VHDL SHA-384 round function is formally verified";
+print "to be equivalent to the FIPS 180-4 specification.";

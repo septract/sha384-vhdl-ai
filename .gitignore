@@ -6,3 +6,8 @@ work/
 *~
 .DS_Store
 test_vectors.txt
+
+# Formal verification (tools ~600MB, generated files)
+formal/tools/
+formal/work/
+formal/*.json

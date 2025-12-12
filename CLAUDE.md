@@ -43,11 +43,14 @@ python3 compare_sha384.py --skip-vhdl
 | `sha384_fast8.vhd` | 8x unrolled core (~18 cycles/block, 6.5x speedup) |
 | `sha384_pipeline.vhd` | 10-stage pipelined core (1 block/cycle, ~117x speedup) |
 | `sha384_multi.vhd` | Multi-core wrapper (N parallel pipelines) |
+| `sha384_round.vhd` | Combinational round function (SAW-verified) |
+| `sha384_verified.vhd` | Implementation using verified round function |
 | `sha384_file_tb.vhd` | File-based testbench (reads test_vectors.txt) |
 | `sha384_fast_file_tb.vhd` | File-based testbench for 4x (512-bit interface) |
 | `sha384_fast8_file_tb.vhd` | File-based testbench for 8x (512-bit interface) |
 | `sha384_pipeline_file_tb.vhd` | File-based testbench for pipeline (1024-bit interface) |
 | `sha384_multi_file_tb.vhd` | File-based testbench for multi (tests all 4 cores) |
+| `sha384_verified_file_tb.vhd` | File-based testbench for verified implementation |
 | `compare_sha384.py` | Comprehensive test suite: NIST vectors, boundary tests, OpenSSL cross-check |
 | `Makefile` | Build automation (`make test`, `make synth-check`, `make clean`) |
 | `OPTIMIZATIONS.md` | Detailed documentation of all optimizations |

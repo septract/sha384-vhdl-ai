@@ -2,7 +2,7 @@
 # Requires: nvc (VHDL simulator), python3
 
 .PHONY: all test test-quick test-baseline test-fast test-fast8 test-pipeline test-multi \
-        synth-check clean help
+        synth-check formal-synth formal-verify formal-clean clean help
 
 # Default target
 all: test
@@ -83,10 +83,43 @@ verify-constants:
 	python3 compare_sha384.py --skip-vhdl
 
 #------------------------------------------------------------------------------
+# Formal Verification with SAW
+#------------------------------------------------------------------------------
+
+# Install SAW tools locally (no sudo required, ~600MB download)
+formal-setup:
+	@echo "Setting up SAW formal verification tools..."
+	cd formal/scripts && chmod +x setup-tools.sh && ./setup-tools.sh
+
+# Synthesize VHDL to Yosys JSON for SAW
+formal-synth:
+	@echo "Synthesizing VHDL to JSON for SAW..."
+	cd formal/scripts && chmod +x synthesize.sh && ./synthesize.sh
+
+# Run SAW formal verification
+formal-verify: formal-synth
+	@echo "Running SAW formal verification..."
+	@if [ -d formal/tools/saw ]; then \
+		export PATH="$$PWD/formal/tools/saw/bin:$$PATH"; \
+	fi; \
+	if [ -d formal/tools/oss-cad-suite ]; then \
+		source formal/tools/oss-cad-suite/environment; \
+	fi; \
+	cd formal && saw verify_round.saw
+
+# Clean formal verification artifacts (keeps tools)
+formal-clean:
+	rm -rf formal/*.json formal/work
+
+# Remove downloaded tools (large, ~600MB)
+formal-clean-tools:
+	rm -rf formal/tools
+
+#------------------------------------------------------------------------------
 # Clean
 #------------------------------------------------------------------------------
 
-clean:
+clean: formal-clean
 	rm -rf work
 	rm -f *.cf *.o
 	rm -f test_vectors.txt
@@ -113,3 +146,10 @@ help:
 	@echo "  make verify-constants - Verify K/H constants against FIPS 180-4"
 	@echo "  make clean            - Remove generated files"
 	@echo "  make help             - Show this help"
+	@echo ""
+	@echo "Formal verification with SAW:"
+	@echo "  make formal-setup     - Download tools locally (~600MB, no sudo)"
+	@echo "  make formal-synth     - Synthesize VHDL to Yosys JSON"
+	@echo "  make formal-verify    - Run SAW formal verification"
+	@echo "  make formal-clean     - Clean verification artifacts"
+	@echo "  make formal-clean-tools - Remove downloaded tools"

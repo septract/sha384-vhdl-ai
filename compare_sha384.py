@@ -242,6 +242,35 @@ def run_vhdl_test(project_dir: Path, impl: str) -> dict:
                 if len(parts) > 1:
                     results["hashes"].append(parts[1].strip().lower())
         return results
+    elif impl == "verified":
+        # Verified uses sha384_round component (SAW-verified round function)
+        pkg = "sha384_pkg.vhd"
+        design = "sha384_round.vhd"
+        design2 = "sha384_verified.vhd"
+        tb = "sha384_verified_file_tb.vhd"
+        entity = "sha384_verified_file_tb"
+        # Compile with round function component
+        cmd = ["nvc", "-a", pkg, design, design2, tb]
+        result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True)
+        if result.returncode != 0:
+            return {"error": f"Compile failed: {result.stderr}"}
+        cmd = ["nvc", "-e", entity]
+        result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True)
+        if result.returncode != 0:
+            return {"error": f"Elaborate failed: {result.stderr}"}
+        cmd = ["nvc", "-r", entity]
+        result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True, timeout=120)
+        output = result.stdout + result.stderr
+        results = {"passed": 0, "failed": 0, "hashes": []}
+        for line in output.split('\n'):
+            if "tests passed" in line:
+                parts = line.split()
+                for i, p in enumerate(parts):
+                    if '/' in p:
+                        passed, total = p.split('/')
+                        results["passed"] = int(passed)
+                        break
+        return results
     else:
         return {"error": f"Unknown impl: {impl}"}
 
@@ -636,6 +665,17 @@ def main():
             else:
                 print(f"    Passed: {multi_results['passed']}/{len(test_cases)}")
 
+        verified_tb = project_dir / "sha384_verified_file_tb.vhd"
+        verified_results = {"hashes": [], "passed": 0}
+        if verified_tb.exists():
+            print("\n  Running SAW-verified sha384_verified...")
+            verified_results = run_vhdl_test(project_dir, "verified")
+            if "error" in verified_results:
+                print(f"    ERROR: {verified_results['error']}")
+                all_ok = False
+            else:
+                print(f"    Passed: {verified_results['passed']}/{len(test_cases)}")
+
         # Detailed comparison
         print("\n" + "=" * 60)
         print("DETAILED RESULTS")
@@ -688,7 +728,7 @@ def main():
         if shutil.which("openssl"):
             print("  ✓ OpenSSL cross-verification passed")
         if not args.skip_vhdl:
-            print("  ✓ All 5 VHDL implementations verified (baseline, fast, fast8, pipeline, multi)")
+            print("  ✓ All 6 VHDL implementations verified (baseline, fast, fast8, pipeline, multi, verified)")
         return 0
     else:
         print("\n  ✗ Some tests FAILED!")
