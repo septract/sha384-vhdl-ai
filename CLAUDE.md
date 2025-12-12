@@ -49,7 +49,9 @@ python3 compare_sha384.py --skip-vhdl
 | `sha384_pipeline_file_tb.vhd` | File-based testbench for pipeline (1024-bit interface) |
 | `sha384_multi_file_tb.vhd` | File-based testbench for multi (tests all 4 cores) |
 | `compare_sha384.py` | Comprehensive test suite: NIST vectors, boundary tests, OpenSSL cross-check |
+| `Makefile` | Build automation (`make test`, `make synth-check`, `make clean`) |
 | `OPTIMIZATIONS.md` | Detailed documentation of all optimizations |
+| `SECURITY.md` | Side-channel vulnerability audit (timing, power, EM) |
 
 ## SHA-384 Algorithm Quick Reference
 

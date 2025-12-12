@@ -43,7 +43,9 @@ See [OPTIMIZATIONS.md](OPTIMIZATIONS.md) for detailed optimization documentation
 | `sha384_pipeline_file_tb.vhd` | File-based testbench for pipeline |
 | `sha384_multi_file_tb.vhd` | File-based testbench for multi (4 cores) |
 | `compare_sha384.py` | Comprehensive test suite with NIST vectors |
+| `Makefile` | Build automation (test, synth-check, clean) |
 | `OPTIMIZATIONS.md` | Detailed optimization documentation |
+| `SECURITY.md` | Side-channel vulnerability audit |
 
 ## Interface
 

@@ -335,6 +335,9 @@ begin
                                 -- This is complex, so for t >= 12, we compute inline next cycle
                                 -- For t = 12: t+4 = 16, need to compute W[16..19]
                                 -- Use the newly computed w0..w3 which are W[t..t+3]
+                                --
+                                -- SIDE-CHANNEL NOTE (SCA-03): Nested sigma operations below
+                                -- create deep carry chains with power correlation. See SECURITY.md.
                                 kw_pre(0) <= add2(K(to_integer(t + 4)), std_logic_vector(
                                     unsigned(small_sigma1(w2)) +
                                     unsigned(W(w_idx(t - 3))) +

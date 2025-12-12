@@ -258,6 +258,8 @@ begin
                             w6 := W_buf(w_idx(t+6)); w7 := W_buf(w_idx(t+7));
                         else
                             -- Rounds 16+: compute W schedule
+                            -- SIDE-CHANNEL NOTE (SCA-02): Cascading W dependencies within
+                            -- single cycle create power correlation. See SECURITY.md.
                             w0 := std_logic_vector(
                                 unsigned(small_sigma1(W_buf(w_idx(t-2)))) +
                                 unsigned(W_buf(w_idx(t-7))) +

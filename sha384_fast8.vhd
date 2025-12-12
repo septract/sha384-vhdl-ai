@@ -180,6 +180,10 @@ begin
                         else
                             -- Compute 8 new W values with dependency chain
                             -- W[t] = sigma1(W[t-2]) + W[t-7] + sigma0(W[t-15]) + W[t-16]
+                            --
+                            -- SIDE-CHANNEL NOTE (SCA-01): This cascading dependency chain
+                            -- (w0->w2->w4->w6, w1->w3->w5->w7) creates variable power
+                            -- consumption correlated with W values. See SECURITY.md.
 
                             -- w0 and w1 only depend on buffer values
                             w0 := std_logic_vector(
